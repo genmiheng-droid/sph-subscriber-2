@@ -1,0 +1,8 @@
+{
+  "name": "The Straits Times Subscriptions",
+  "description": "Subscribe to The Straits Times digital, print, and News Tablet packages from SPH Media Singapore.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
