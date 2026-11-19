@@ -1,23 +1,29 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { CheckCircle2, X } from 'lucide-react';
-import { SUBSCRIPTION_PLANS, SubscriptionPlan } from '../data/plans';
+import { BillingCadence, SUBSCRIPTION_PLANS, SubscriptionPlan } from '../data/plans';
 import { ResidentialType } from './PlanSection';
 
 interface CheckoutDrawerProps {
   isOpen: boolean;
   plan: SubscriptionPlan | null;
+  billingCadence: BillingCadence;
   residentialType: ResidentialType;
   onChangePlan: (plan: SubscriptionPlan) => void;
+  onChangeBillingCadence: (cadence: BillingCadence) => void;
   onChangeResidentialType: (type: ResidentialType) => void;
+  onSubscriptionCompleted: (planName: string, cadence: BillingCadence) => void;
   onClose: () => void;
 }
 
 export function CheckoutDrawer({
   isOpen,
   plan,
+  billingCadence,
   residentialType,
   onChangePlan,
+  onChangeBillingCadence,
   onChangeResidentialType,
+  onSubscriptionCompleted,
   onClose,
 }: CheckoutDrawerProps) {
   const [fullName, setFullName] = useState('');
@@ -25,9 +31,6 @@ export function CheckoutDrawer({
   const [mobile, setMobile] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [streetAddress, setStreetAddress] = useState('');
-  const [promoInput, setPromoInput] = useState('');
-  const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
-  const [promoFeedback, setPromoFeedback] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [orderReference, setOrderReference] = useState<string | null>(null);
 
@@ -42,28 +45,13 @@ export function CheckoutDrawer({
 
   if (!isOpen || !plan) return null;
 
+  const isAnnualAllDigital = plan.id === 'all-digital' && billingCadence === 'annual';
   const deliveryFee = plan.hasPrintDeliveryFee
     ? residentialType === 'hdb_condo'
       ? 3.0
       : 5.0
     : 0;
-  const promoDiscount = appliedPromo ? 2.0 : 0;
-  const monthlyTotal = Math.max(0, plan.priceMonthly + deliveryFee - promoDiscount);
-
-  const handleApplyPromo = () => {
-    const code = promoInput.trim().toUpperCase();
-    if (!code) {
-      setPromoFeedback('Enter a promo code such as STREADER.');
-      return;
-    }
-    if (code === 'STREADER' || code === 'WELCOME') {
-      setAppliedPromo(code);
-      setPromoFeedback(`Code ${code} applied: $2.00/mo off your first 3 months.`);
-    } else {
-      setAppliedPromo(null);
-      setPromoFeedback('Promo code not recognised. Try STREADER.');
-    }
-  };
+  const totalDueToday = isAnnualAllDigital ? plan.annualPrice! : plan.priceMonthly + deliveryFee;
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -78,12 +66,12 @@ export function CheckoutDrawer({
       return;
     }
     if (!/^[89]\d{7}$/.test(mobile.trim())) {
-      setFormError('Please enter a valid 8-digit Singapore mobile number starting with 8 or 9.');
+      setFormError('Please enter an 8-digit Singapore mobile number starting with 8 or 9.');
       return;
     }
     if (plan.requiresDeliveryAddress) {
       if (!/^\d{6}$/.test(postalCode.trim())) {
-        setFormError('Please enter a valid 6-digit Singapore postal code for delivery.');
+        setFormError('Please enter a 6-digit Singapore postal code.');
         return;
       }
       if (streetAddress.trim().length < 5) {
@@ -94,6 +82,7 @@ export function CheckoutDrawer({
 
     const randomDigits = Math.floor(100000 + Math.random() * 900000);
     setOrderReference(`ST-2026-${randomDigits}`);
+    onSubscriptionCompleted(plan.name, isAnnualAllDigital ? 'annual' : 'monthly');
   };
 
   const handleResetAndClose = () => {
@@ -112,7 +101,6 @@ export function CheckoutDrawer({
       <div className="absolute inset-0" onClick={handleResetAndClose} />
 
       <div className="relative w-full max-w-lg bg-white h-full overflow-y-auto shadow-2xl border-l border-slate-200 flex flex-col">
-        {/* Drawer Header */}
         <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-semibold text-[#0C5AA6] uppercase tracking-wider">
@@ -138,73 +126,60 @@ export function CheckoutDrawer({
               <CheckCircle2 className="w-6 h-6 text-emerald-700 shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-bold text-emerald-950">
-                  Order #{orderReference} Confirmed
+                  Order #{orderReference} Confirmed (+1 Subscription Logged)
                 </p>
                 <p className="text-sm text-emerald-900 mt-1 leading-relaxed">
-                  Your {plan.name} subscription is active. Activation details and your receipt have
-                  been prepared for <span className="font-medium">{email}</span>.
+                  Your {plan.name} subscription is now active for{' '}
+                  <span className="font-medium">{email}</span>.
                 </p>
               </div>
             </div>
 
             <div className="border border-slate-200 rounded-xl p-5 space-y-3 text-sm">
               <p className="font-semibold text-[#0B2A4A] pb-2 border-b border-slate-100">
-                Order Summary
+                Receipt Summary
               </p>
               <div className="flex justify-between text-slate-600">
                 <span>Selected Package</span>
                 <span className="font-semibold text-slate-900">{plan.name}</span>
               </div>
               <div className="flex justify-between text-slate-600">
-                <span>Access Scope</span>
-                <span className="text-slate-900">{plan.concurrentDevices}</span>
+                <span>Billing Cadence</span>
+                <span className="text-slate-900">
+                  {isAnnualAllDigital ? 'Annual ($180/yr · 2-week offer)' : 'Monthly'}
+                </span>
               </div>
               {plan.hasPrintDeliveryFee && (
                 <div className="flex justify-between text-slate-600">
-                  <span>Delivery Surcharge</span>
-                  <span className="tabular-nums text-slate-900">
-                    ${deliveryFee.toFixed(2)} / mo
-                  </span>
-                </div>
-              )}
-              {appliedPromo && (
-                <div className="flex justify-between text-emerald-700">
-                  <span>Promo ({appliedPromo})</span>
-                  <span className="tabular-nums">−${promoDiscount.toFixed(2)} / mo</span>
+                  <span>Home Delivery Surcharge</span>
+                  <span className="tabular-nums text-slate-900">${deliveryFee.toFixed(2)} / mo</span>
                 </div>
               )}
               <div className="flex justify-between pt-3 border-t border-slate-100 text-base font-bold text-[#0B2A4A]">
-                <span>Total Monthly Billing</span>
-                <span className="tabular-nums">${monthlyTotal.toFixed(2)} SGD</span>
+                <span>Total Billed</span>
+                <span className="tabular-nums">
+                  ${isAnnualAllDigital ? totalDueToday.toFixed(0) : totalDueToday.toFixed(2)} SGD
+                  {isAnnualAllDigital ? ' / yr' : ' / mo'}
+                </span>
               </div>
             </div>
-
-            {plan.requiresDeliveryAddress && (
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-700">
-                <p className="font-semibold text-[#0B2A4A] mb-1">Delivery Destination</p>
-                <p>
-                  {streetAddress}, Singapore {postalCode}
-                </p>
-              </div>
-            )}
 
             <button
               type="button"
               onClick={handleResetAndClose}
               className="w-full py-3 px-4 text-sm font-semibold text-white bg-[#0B2A4A] hover:bg-[#071D35] rounded-lg transition-colors cursor-pointer"
             >
-              Return to Subscription Portal
+              Back to Comparison View
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="p-6 space-y-6 flex-1">
-            {/* Switch Plan */}
+          <form onSubmit={handleSubmit} className="p-6 space-y-5 flex-1">
             <div>
               <label
                 htmlFor="checkout-plan-select"
                 className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2"
               >
-                Selected Package
+                Selected Package (3 Streamlined Options)
               </label>
               <select
                 id="checkout-plan-select"
@@ -221,12 +196,46 @@ export function CheckoutDrawer({
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-slate-500 mt-1.5">
-                {plan.concurrentDevices} · {plan.contractLabel}
-              </p>
             </div>
 
-            {/* Print Residence Selector */}
+            {plan.id === 'all-digital' && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+                  Billing Commitment
+                </p>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => onChangeBillingCadence('monthly')}
+                    className={`py-2.5 px-3 rounded-lg border text-xs font-semibold text-left cursor-pointer transition-colors ${
+                      billingCadence === 'monthly'
+                        ? 'border-[#0B2A4A] bg-slate-50 text-[#0B2A4A]'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    Monthly ($15.90/mo)
+                    <span className="block font-normal text-[#B91C1C] mt-0.5">
+                      5 days left at promo rate
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChangeBillingCadence('annual')}
+                    className={`py-2.5 px-3 rounded-lg border text-xs font-semibold text-left cursor-pointer transition-colors ${
+                      billingCadence === 'annual'
+                        ? 'border-[#0B2A4A] bg-slate-50 text-[#0B2A4A]'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    Annual ($180/yr)
+                    <span className="block font-normal text-[#B91C1C] mt-0.5">
+                      Offer valid for 2 weeks only
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {plan.hasPrintDeliveryFee && (
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
@@ -265,12 +274,7 @@ export function CheckoutDrawer({
               </div>
             )}
 
-            {/* Subscriber Details */}
-            <div className="space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Subscriber Details
-              </p>
-
+            <div className="space-y-3.5">
               <div>
                 <label htmlFor="sub-name" className="block text-sm font-medium text-slate-700 mb-1">
                   Full Name
@@ -324,7 +328,7 @@ export function CheckoutDrawer({
               </div>
 
               {plan.requiresDeliveryAddress && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-1">
                     <label
                       htmlFor="sub-postal"
@@ -365,64 +369,17 @@ export function CheckoutDrawer({
               )}
             </div>
 
-            {/* Promo Code */}
-            <div>
-              <label
-                htmlFor="promo-code"
-                className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2"
-              >
-                Promo Code (Optional)
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id="promo-code"
-                  type="text"
-                  value={promoInput}
-                  onChange={(e) => setPromoInput(e.target.value)}
-                  placeholder="Enter STREADER"
-                  className="flex-1 rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-900 uppercase focus:outline-none focus:ring-2 focus:ring-[#0C5AA6]"
-                />
-                <button
-                  type="button"
-                  onClick={handleApplyPromo}
-                  className="px-4 py-2 text-sm font-semibold text-[#0B2A4A] bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                >
-                  Apply
-                </button>
-              </div>
-              {promoFeedback && (
-                <p
-                  className={`text-xs mt-1.5 ${
-                    appliedPromo ? 'text-emerald-700 font-medium' : 'text-slate-600'
-                  }`}
-                >
-                  {promoFeedback}
-                </p>
-              )}
-            </div>
-
-            {/* Price Breakdown */}
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2 text-sm">
-              <div className="flex justify-between text-slate-600">
-                <span>{plan.name}</span>
-                <span className="tabular-nums">${plan.priceMonthly.toFixed(2)}</span>
+              <div className="flex justify-between font-bold text-[#0B2A4A] text-base">
+                <span>Total Due</span>
+                <span className="tabular-nums">
+                  ${isAnnualAllDigital ? totalDueToday.toFixed(0) : totalDueToday.toFixed(2)} SGD
+                  {isAnnualAllDigital ? ' / yr' : ' / mo'}
+                </span>
               </div>
-              {plan.hasPrintDeliveryFee && (
-                <div className="flex justify-between text-slate-600">
-                  <span>Home Delivery ({residentialType === 'hdb_condo' ? 'HDB/Condo' : 'Landed'})</span>
-                  <span className="tabular-nums">${deliveryFee.toFixed(2)}</span>
-                </div>
-              )}
-              {appliedPromo && (
-                <div className="flex justify-between text-emerald-700 font-medium">
-                  <span>Promo Discount ({appliedPromo})</span>
-                  <span className="tabular-nums">−${promoDiscount.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between pt-2 border-t border-slate-200 font-bold text-[#0B2A4A] text-base">
-                <span>Monthly Total (incl. GST)</span>
-                <span className="tabular-nums">${monthlyTotal.toFixed(2)} SGD</span>
-              </div>
+              <p className="text-xs text-slate-500">
+                Completing this form logs +1 subscription to the tracked metric.
+              </p>
             </div>
 
             {formError && (
@@ -433,9 +390,9 @@ export function CheckoutDrawer({
 
             <button
               type="submit"
-              className="w-full py-3.5 px-5 text-sm font-semibold text-white bg-[#0B2A4A] hover:bg-[#071D35] rounded-lg transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0B2A4A]"
+              className="w-full py-3.5 px-5 text-sm font-semibold text-white bg-[#0B2A4A] hover:bg-[#071D35] rounded-lg transition-colors cursor-pointer"
             >
-              Confirm Subscription (${monthlyTotal.toFixed(2)}/mo)
+              Confirm Subscription
             </button>
           </form>
         )}
